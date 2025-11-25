@@ -262,7 +262,7 @@ export default function SimpleDataCollector() {
                     {/* Correct Sentence ONLY */}
                     <div className="bg-emerald-50/50 p-5 rounded-lg border border-emerald-100">
                       <label className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
-                        <CheckCircle size={16} /> Correct Sentence (Spoken Sinhala)
+                        <CheckCircle size={16} /> Correct Sentence
                       </label>
                       <textarea
                         required rows={6}
