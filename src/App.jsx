@@ -31,7 +31,7 @@ const db = getFirestore(app);
 
 const COLLECTION_NAME = 'sinhala_story_dataset_simple';
 
-export default function App() {
+export default function SimpleDataCollector() {
   const [user, setUser] = useState(null);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
