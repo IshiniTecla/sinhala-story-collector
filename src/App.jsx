@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Camera, Save, Database, Trash2, FileText,
   CheckCircle, BookOpen, FileSpreadsheet, Code,
-  Loader2, AlertCircle
+  Loader2, AlertCircle, Tag
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -37,10 +37,10 @@ export default function SimpleDataCollector() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('collect');
 
-  // --- SIMPLIFIED STATE ---
+  // --- STATE ---
   const [formData, setFormData] = useState({
-    grade: 'Grade 1',
-    related: ''
+    grade: 'Basic Level (Grade 1 & 2)', // Set default to match new options
+    related: '' // We use this field to store Keywords now
   });
 
   const [imageBase64, setImageBase64] = useState(null);
@@ -85,7 +85,7 @@ export default function SimpleDataCollector() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [user]); // Re-run when user status changes
+  }, [user]);
 
   // Helper: Toast Notifications
   const showNotification = (message, type = 'success') => {
@@ -106,7 +106,7 @@ export default function SimpleDataCollector() {
     reader.readAsDataURL(file);
   };
 
-  // --- 3. Submit Data (FIXED) ---
+  // --- 3. Submit Data ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!imageBase64) return showNotification("Please upload an image.", "error");
@@ -121,12 +121,15 @@ export default function SimpleDataCollector() {
         ...formData,
         imageUrl: imageBase64,
         createdAt: serverTimestamp(),
-        // FIX: Ensure this is 'null' if undefined, otherwise Firestore crashes
         authorId: user?.uid || null
       });
 
       showNotification("Saved successfully!");
-      setFormData({ grade: 'Grade 1', related: '' }); // Reset form
+      // Reset form
+      setFormData({
+        grade: 'Basic Level (Grade 1 & 2)',
+        related: ''
+      });
       setImageBase64(null);
     } catch (error) {
       console.error("Detailed Save Error:", error);
@@ -152,17 +155,17 @@ export default function SimpleDataCollector() {
   const handleExportJSON = () => {
     const exportData = entries.map(e => ({
       input: { image_context: "Image provided separately", grade_level: e.grade },
-      output: { sentence: e.related }
+      output: { keywords: e.related } // Changed label to keywords in export
     }));
     const jsonString = `data:text/json;chatset=utf-8,${encodeURIComponent(JSON.stringify(exportData, null, 2))}`;
     const link = document.createElement("a");
     link.href = jsonString;
-    link.download = "sinhala_sentence_training.json";
+    link.download = "sinhala_keyword_training.json";
     link.click();
   };
 
   const handleExportCSV = () => {
-    const headers = ["ID", "Grade", "Sentence", "Image_Base64"];
+    const headers = ["ID", "Grade", "Keywords", "Image_Base64"];
     const rows = entries.map(e => [
       e.id, e.grade, `"${e.related}"`, `"${e.imageUrl ? e.imageUrl.substring(0, 50) + '...' : 'No Image'}"`
     ]);
@@ -171,7 +174,7 @@ export default function SimpleDataCollector() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "dataset_simple.csv";
+    link.download = "dataset_keywords.csv";
     link.click();
   };
 
@@ -241,11 +244,9 @@ export default function SimpleDataCollector() {
                     onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
                     className="w-full mt-1 p-2.5 border rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option>Grade 1</option>
-                    <option>Grade 2</option>
-                    <option>Grade 3</option>
-                    <option>Grade 4</option>
-                    <option>Grade 5</option>
+                    <option>Basic Level (Grade 1 & 2)</option>
+                    <option>Intermediate Level (Grade 3 & 4)</option>
+                    <option>Advanced Level (Grade 5)</option>
                   </select>
                 </div>
               </div>
@@ -256,17 +257,17 @@ export default function SimpleDataCollector() {
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-full flex flex-col justify-between">
                 <div>
                   <h2 className="font-semibold mb-6 text-slate-700 flex items-center gap-2">
-                    <FileText size={18} /> 2. Write Sentence
+                    <Tag size={18} /> 2. Add Keywords
                   </h2>
                   <form onSubmit={handleSubmit} className="space-y-5">
-                    {/* Correct Sentence ONLY */}
+                    {/* Keywords Input */}
                     <div className="bg-emerald-50/50 p-5 rounded-lg border border-emerald-100">
                       <label className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
-                        <CheckCircle size={16} /> Correct Sentence
+                        <CheckCircle size={16} /> Image Keywords (Descriptive)
                       </label>
                       <textarea
                         required rows={6}
-                        placeholder="Type the correct story sentence here...&#10;Ex: ළමයි වතුරේ සෙල්ලම් කරනවා."
+                        placeholder="Enter keywords that describe the image...&#10;Ex: Dog, Playing, Mud, Garden"
                         className="w-full p-4 rounded border border-emerald-200 focus:ring-2 focus:ring-emerald-500 outline-none text-lg font-sinhala leading-relaxed"
                         value={formData.related}
                         onChange={(e) => setFormData({ ...formData, related: e.target.value })}
@@ -290,7 +291,7 @@ export default function SimpleDataCollector() {
             <div className="flex justify-between items-center bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               <div>
                 <h2 className="font-bold text-lg text-slate-800">Collected Data</h2>
-                <p className="text-slate-500 text-sm">Review your Image-Sentence pairs.</p>
+                <p className="text-slate-500 text-sm">Review your Image-Keyword pairs.</p>
               </div>
               <div className="flex gap-3">
                 <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 font-medium text-sm transition-colors">
@@ -307,7 +308,7 @@ export default function SimpleDataCollector() {
                 <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
                   <tr>
                     <th className="px-6 py-4">Image</th>
-                    <th className="px-6 py-4">Correct Sentence</th>
+                    <th className="px-6 py-4">Keywords</th>
                     <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
