@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Camera, Save, Trash2, FileText,
   CheckCircle, BookOpen, FileSpreadsheet, Code,
-  Loader2, AlertCircle, List, HelpCircle, Terminal
+  Loader2, AlertCircle, List, HelpCircle, Terminal, Edit2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import {
-  getFirestore, collection, addDoc, deleteDoc, doc,
+  getFirestore, collection, addDoc, deleteDoc, updateDoc, doc,
   onSnapshot, query, orderBy, serverTimestamp
 } from 'firebase/firestore';
 
@@ -34,9 +34,12 @@ export default function GoldenDataCollector() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('collect');
 
+  // New State for Editing
+  const [editingId, setEditingId] = useState(null);
+
   const [formData, setFormData] = useState({
-    grade: 'Grade 1',
-    theme: '',        // <--- We need this for the List View!
+    grade: 'Grade 1-2 (Beginner)', // Updated Default
+    theme: '',
     keywords: '',
     storySentences: '',
     unrelatedSentences: '',
@@ -70,6 +73,19 @@ export default function GoldenDataCollector() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  // --- HELPER: Categorize Data for View ---
+  const getCategory = (gradeString) => {
+    const g = gradeString || "";
+    if (g.includes("1") || g.includes("2")) return "beginner";
+    if (g.includes("3") || g.includes("4")) return "intermediate";
+    if (g.includes("5")) return "advanced";
+    return "beginner"; // Fallback
+  };
+
+  const beginnerEntries = entries.filter(e => getCategory(e.grade) === "beginner");
+  const intermediateEntries = entries.filter(e => getCategory(e.grade) === "intermediate");
+  const advancedEntries = entries.filter(e => getCategory(e.grade) === "advanced");
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -88,34 +104,68 @@ export default function GoldenDataCollector() {
     setFormData({ ...formData, questions: newQuestions });
   };
 
+  // --- EDIT FUNCTION ---
+  const handleEdit = (item) => {
+    setFormData({
+      grade: item.grade,
+      theme: item.theme || '',
+      keywords: item.keywords,
+      storySentences: item.storySentences,
+      unrelatedSentences: item.unrelatedSentences,
+      questions: item.questions
+    });
+    setImageBase64(item.imageUrl);
+    setEditingId(item.id); // Set ID so we know we are updating
+    setActiveTab('collect'); // Switch tab
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll up
+    showNotification("Loaded for editing. Make changes and click Update.", "success");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setFormData({
+      grade: 'Grade 1-2 (Beginner)',
+      theme: '',
+      keywords: '',
+      storySentences: '',
+      unrelatedSentences: '',
+      questions: [
+        { id: 'q1', question: '', options: ['', '', ''], correctIndex: 0 },
+        { id: 'q2', question: '', options: ['', '', ''], correctIndex: 0 },
+      ]
+    });
+    setImageBase64(null);
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!imageBase64) return showNotification("Please upload an image.", "error");
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, COLLECTION_NAME), {
-        ...formData,
-        imageUrl: imageBase64,
-        createdAt: serverTimestamp(),
-        authorId: user?.uid || null
-      });
-
-      showNotification("Saved! Great job.");
+      if (editingId) {
+        // --- UPDATE EXISTING ---
+        const docRef = doc(db, COLLECTION_NAME, editingId);
+        await updateDoc(docRef, {
+          ...formData,
+          imageUrl: imageBase64,
+          // We don't update createdAt or authorId usually
+        });
+        showNotification("Entry Updated Successfully!");
+      } else {
+        // --- CREATE NEW ---
+        await addDoc(collection(db, COLLECTION_NAME), {
+          ...formData,
+          imageUrl: imageBase64,
+          createdAt: serverTimestamp(),
+          authorId: user?.uid || null
+        });
+        showNotification("Saved! Great job.");
+      }
 
       // Reset logic
-      setFormData({
-        grade: 'Grade 1',
-        theme: '',
-        keywords: '',
-        storySentences: '',
-        unrelatedSentences: '',
-        questions: [
-          { id: 'q1', question: '', options: ['', '', ''], correctIndex: 0 },
-          { id: 'q2', question: '', options: ['', '', ''], correctIndex: 0 },
-        ]
-      });
-      setImageBase64(null);
+      handleCancelEdit(); // Clears form and editingId
+
     } catch (error) {
       console.error(error);
       showNotification("Save failed.", "error");
@@ -135,25 +185,19 @@ export default function GoldenDataCollector() {
   // ==========================================================
   const handleExportTrainingData = () => {
     const jsonlData = entries.map(e => {
-
-      // Clean up the story text (remove extra spaces)
       const storyText = e.storySentences.replace(/\n/g, ' ').trim();
-
       let questionsText = "ප්‍රශ්න:\n";
       e.questions.forEach((q, idx) => {
         questionsText += `${idx + 1}. ${q.question}\n`;
       });
-
       let answersText = "පිළිතුරු:\n";
       e.questions.forEach((q, idx) => {
         const correctOpt = q.options[q.correctIndex];
         answersText += `${idx + 1}. ${correctOpt}\n`;
       });
-
       const fullOutput = `කතාව:\n${storyText}\n\n${questionsText}\n${answersText}`;
 
       return JSON.stringify({
-        // We use the English keywords in the instruction/input
         instruction: `Write a spoken Sinhala story for ${e.grade} and questions based on: ${e.keywords}`,
         input: `keywords: ${e.keywords}`,
         output: fullOutput
@@ -219,15 +263,18 @@ export default function GoldenDataCollector() {
               </div>
 
               <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
-                <h2 className="font-semibold text-slate-700 flex items-center gap-2"><List size={18} /> Context</h2>
+                <div className="flex justify-between items-center">
+                  <h2 className="font-semibold text-slate-700 flex items-center gap-2"><List size={18} /> Context</h2>
+                  {editingId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded font-bold">EDITING MODE</span>}
+                </div>
 
-                {/* 1. Theme (Added back for your organization) */}
+                {/* 1. Theme */}
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Theme Name (Sinhala)</label>
                   <input type="text" placeholder="Ex: කෑම උයන වලහා" className="w-full mt-1 p-2.5 border rounded-lg font-sinhala" value={formData.theme} onChange={(e) => setFormData({ ...formData, theme: e.target.value })} />
                 </div>
 
-                {/* 2. Grade Selector */}
+                {/* 2. Grade Selector (UPDATED) */}
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Difficulty Level</label>
                   <select
@@ -235,15 +282,13 @@ export default function GoldenDataCollector() {
                     onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
                     className="w-full mt-1 p-2.5 border rounded-lg bg-slate-50 focus:ring-2 focus:ring-purple-500 outline-none"
                   >
-                    <option value="Grade 1">Grade 1 - Beginner</option>
-                    <option value="Grade 2">Grade 2 - Beginner</option>
-                    <option value="Grade 3">Grade 3 - Intermediate</option>
-                    <option value="Grade 4">Grade 4 - Intermediate</option>
-                    <option value="Grade 5">Grade 5 - Advanced</option>
+                    <option value="Grade 1-2 (Beginner)">Grade 1-2 (Beginner)</option>
+                    <option value="Grade 3-4 (Intermediate)">Grade 3-4 (Intermediate)</option>
+                    <option value="Grade 5 (Advanced)">Grade 5 (Advanced)</option>
                   </select>
                 </div>
 
-                {/* 3. Keywords (Updated Label) */}
+                {/* 3. Keywords */}
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Keywords (Paste English BLIP)</label>
                   <input type="text" placeholder="Paste the English sentence here..." className="w-full mt-1 p-2.5 border rounded-lg bg-yellow-50" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })} />
@@ -289,46 +334,91 @@ export default function GoldenDataCollector() {
                   </div>
                 </div>
 
-                <button disabled={isSubmitting} className="w-full bg-purple-600 text-white px-8 py-4 rounded-xl font-bold hover:bg-purple-700 transition-all flex items-center justify-center gap-2">
-                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={24} />}
-                  {isSubmitting ? 'Saving...' : 'Save to Dataset'}
-                </button>
+                <div className="flex gap-3">
+                  {editingId && (
+                    <button type="button" onClick={handleCancelEdit} className="w-1/3 bg-slate-200 text-slate-700 px-8 py-4 rounded-xl font-bold hover:bg-slate-300 transition-all">
+                      Cancel
+                    </button>
+                  )}
+                  <button disabled={isSubmitting} className={`flex-1 ${editingId ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-purple-600 hover:bg-purple-700'} text-white px-8 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2`}>
+                    {isSubmitting ? <Loader2 className="animate-spin" /> : (editingId ? <Edit2 size={24} /> : <Save size={24} />)}
+                    {isSubmitting ? 'Saving...' : (editingId ? 'Update Entry' : 'Save to Dataset')}
+                  </button>
+                </div>
               </form>
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div className="flex justify-between items-center bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               <div>
-                <h2 className="font-bold text-lg text-slate-800">Dataset Entries</h2>
-                <p className="text-slate-500 text-sm">Download this for your Python script.</p>
+                <h2 className="font-bold text-lg text-slate-800">Dataset Overview</h2>
+                <p className="text-slate-500 text-sm">Download for Python or Edit existing entries.</p>
               </div>
               <button onClick={handleExportTrainingData} className="flex items-center gap-2 px-6 py-2 bg-black text-white rounded-lg hover:bg-slate-800 font-bold transition-colors shadow-md">
                 <Terminal size={18} className="text-green-400" /> Download train.jsonl
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              {entries.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex gap-6">
-                  <img src={item.imageUrl} className="w-24 h-24 object-cover rounded bg-slate-100" />
-                  <div className="flex-1">
-                    <div className="flex justify-between">
-                      <h3 className="font-bold font-sinhala">{item.theme || "No Theme Name"}</h3>
-                      <button onClick={() => handleDelete(item.id)} className="text-rose-500"><Trash2 size={18} /></button>
-                    </div>
-                    <div className="flex gap-2 my-1">
-                      <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">{item.grade}</span>
-                      <span className="text-xs text-slate-500 self-center">Keywords: {item.keywords}</span>
-                    </div>
-                    <p className="mt-2 text-sm font-sinhala line-clamp-2">{item.storySentences}</p>
-                  </div>
-                </div>
-              ))}
+            {/* --- SECTIONS --- */}
+
+            {/* 1. BEGINNER */}
+            <div>
+              <h3 className="text-purple-700 font-bold text-xl mb-4 flex items-center gap-2">🌱 Beginner (Grade 1-2)</h3>
+              <div className="grid grid-cols-1 gap-4">
+                {beginnerEntries.length === 0 && <p className="text-slate-400 italic pl-4">No entries yet.</p>}
+                {beginnerEntries.map(item => <EntryCard key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />)}
+              </div>
             </div>
+
+            {/* 2. INTERMEDIATE */}
+            <div>
+              <h3 className="text-blue-600 font-bold text-xl mb-4 mt-8 flex items-center gap-2">📘 Intermediate (Grade 3-4)</h3>
+              <div className="grid grid-cols-1 gap-4">
+                {intermediateEntries.length === 0 && <p className="text-slate-400 italic pl-4">No entries yet.</p>}
+                {intermediateEntries.map(item => <EntryCard key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />)}
+              </div>
+            </div>
+
+            {/* 3. ADVANCED */}
+            <div>
+              <h3 className="text-rose-600 font-bold text-xl mb-4 mt-8 flex items-center gap-2">🎓 Advanced (Grade 5)</h3>
+              <div className="grid grid-cols-1 gap-4">
+                {advancedEntries.length === 0 && <p className="text-slate-400 italic pl-4">No entries yet.</p>}
+                {advancedEntries.map(item => <EntryCard key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />)}
+              </div>
+            </div>
+
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// Sub-component for cleaner code
+function EntryCard({ item, onEdit, onDelete }) {
+  return (
+    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex gap-6 hover:shadow-md transition-shadow">
+      <img src={item.imageUrl} className="w-24 h-24 object-cover rounded bg-slate-100" />
+      <div className="flex-1">
+        <div className="flex justify-between">
+          <h3 className="font-bold font-sinhala text-lg">{item.theme || "No Theme Name"}</h3>
+          <div className="flex gap-2">
+            <button onClick={() => onEdit(item)} className="p-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors" title="Edit">
+              <Edit2 size={16} />
+            </button>
+            <button onClick={() => onDelete(item.id)} className="p-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200 transition-colors" title="Delete">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-2 my-1">
+          <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2 py-1 rounded">{item.grade}</span>
+          <span className="text-xs text-slate-500 self-center truncate max-w-md">Keywords: {item.keywords}</span>
+        </div>
+        <p className="mt-2 text-sm font-sinhala line-clamp-2 text-slate-600">{item.storySentences}</p>
+      </div>
     </div>
   );
 }
