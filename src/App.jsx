@@ -12,7 +12,6 @@ import {
 } from 'firebase/firestore';
 
 // --- FIREBASE CONFIGURATION ---
-// (Keep your existing config here)
 const firebaseConfig = {
   apiKey: "AIzaSyB4ScQvL5q_9Dg8Hs5NYDNFF_fZkWfOjus",
   authDomain: "sinhala-story-collection.firebaseapp.com",
@@ -37,7 +36,7 @@ export default function GoldenDataCollector() {
 
   const [formData, setFormData] = useState({
     grade: 'Grade 1',
-    theme: '',
+    theme: '',        // <--- We need this for the List View!
     keywords: '',
     storySentences: '',
     unrelatedSentences: '',
@@ -132,46 +131,40 @@ export default function GoldenDataCollector() {
   };
 
   // ==========================================================
-  // 🔴 THE CRITICAL UPDATE: EXPORT FOR LLAMA TRAINING
+  // EXPORT FOR LLAMA TRAINING
   // ==========================================================
   const handleExportTrainingData = () => {
-    // We map your nice UI data into the specific JSONL format for the Python script
     const jsonlData = entries.map(e => {
 
-      // 1. Format the output string (Story + Questions + Answers)
-      // We join the story sentences into a paragraph
+      // Clean up the story text (remove extra spaces)
       const storyText = e.storySentences.replace(/\n/g, ' ').trim();
 
-      // Format Questions
       let questionsText = "ප්‍රශ්න:\n";
       e.questions.forEach((q, idx) => {
         questionsText += `${idx + 1}. ${q.question}\n`;
       });
 
-      // Format Answers
       let answersText = "පිළිතුරු:\n";
       e.questions.forEach((q, idx) => {
         const correctOpt = q.options[q.correctIndex];
         answersText += `${idx + 1}. ${correctOpt}\n`;
       });
 
-      // Combine it all
       const fullOutput = `කතාව:\n${storyText}\n\n${questionsText}\n${answersText}`;
 
-      // 2. Return the Training Object
       return JSON.stringify({
+        // We use the English keywords in the instruction/input
         instruction: `Write a spoken Sinhala story for ${e.grade} and questions based on: ${e.keywords}`,
         input: `keywords: ${e.keywords}`,
         output: fullOutput
       });
     });
 
-    // Join with newlines to make it valid JSONL
     const blob = new Blob([jsonlData.join('\n')], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "train.jsonl"; // <--- Saves directly as the file we need!
+    link.download = "train.jsonl";
     link.click();
   };
 
@@ -227,10 +220,34 @@ export default function GoldenDataCollector() {
 
               <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
                 <h2 className="font-semibold text-slate-700 flex items-center gap-2"><List size={18} /> Context</h2>
-                <select value={formData.grade} onChange={(e) => setFormData({ ...formData, grade: e.target.value })} className="w-full p-2.5 border rounded-lg bg-slate-50">
-                  {[1, 2, 3, 4, 5].map(g => <option key={g} value={`Grade ${g}`}>Grade {g}</option>)}
-                </select>
-                <input type="text" placeholder="Keywords (Ex: bear, kitchen)" className="w-full p-2.5 border rounded-lg font-sinhala" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })} />
+
+                {/* 1. Theme (Added back for your organization) */}
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase">Theme Name (Sinhala)</label>
+                  <input type="text" placeholder="Ex: කෑම උයන වලහා" className="w-full mt-1 p-2.5 border rounded-lg font-sinhala" value={formData.theme} onChange={(e) => setFormData({ ...formData, theme: e.target.value })} />
+                </div>
+
+                {/* 2. Grade Selector */}
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase">Difficulty Level</label>
+                  <select
+                    value={formData.grade}
+                    onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
+                    className="w-full mt-1 p-2.5 border rounded-lg bg-slate-50 focus:ring-2 focus:ring-purple-500 outline-none"
+                  >
+                    <option value="Grade 1">Grade 1 - Beginner</option>
+                    <option value="Grade 2">Grade 2 - Beginner</option>
+                    <option value="Grade 3">Grade 3 - Intermediate</option>
+                    <option value="Grade 4">Grade 4 - Intermediate</option>
+                    <option value="Grade 5">Grade 5 - Advanced</option>
+                  </select>
+                </div>
+
+                {/* 3. Keywords (Updated Label) */}
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase">Keywords (Paste English BLIP)</label>
+                  <input type="text" placeholder="Paste the English sentence here..." className="w-full mt-1 p-2.5 border rounded-lg bg-yellow-50" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })} />
+                </div>
               </div>
             </div>
 
@@ -240,8 +257,14 @@ export default function GoldenDataCollector() {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                   <h2 className="font-semibold mb-4 text-slate-700 flex items-center gap-2"><FileText size={18} /> Story Content</h2>
                   <div className="space-y-4">
-                    <textarea required rows={5} placeholder="Write the perfect Sinhala story here (sentences on new lines)..." className="w-full p-4 rounded border font-sinhala" value={formData.storySentences} onChange={(e) => setFormData({ ...formData, storySentences: e.target.value })} />
-                    <textarea required rows={3} placeholder="Write 2 unrelated sentences (distractors)..." className="w-full p-4 rounded border bg-rose-50 font-sinhala" value={formData.unrelatedSentences} onChange={(e) => setFormData({ ...formData, unrelatedSentences: e.target.value })} />
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase">Correct Story Sentences</label>
+                      <textarea required rows={5} placeholder="Write the perfect Sinhala story here (sentences on new lines)..." className="w-full mt-1 p-4 rounded border font-sinhala focus:ring-2 focus:ring-purple-500 outline-none" value={formData.storySentences} onChange={(e) => setFormData({ ...formData, storySentences: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-400 uppercase">Distractor Sentences (Wrong)</label>
+                      <textarea required rows={3} placeholder="Write 2 unrelated sentences..." className="w-full mt-1 p-4 rounded border bg-rose-50 font-sinhala focus:ring-2 focus:ring-rose-500 outline-none" value={formData.unrelatedSentences} onChange={(e) => setFormData({ ...formData, unrelatedSentences: e.target.value })} />
+                    </div>
                   </div>
                 </div>
 
@@ -291,10 +314,13 @@ export default function GoldenDataCollector() {
                   <img src={item.imageUrl} className="w-24 h-24 object-cover rounded bg-slate-100" />
                   <div className="flex-1">
                     <div className="flex justify-between">
-                      <h3 className="font-bold font-sinhala">{item.theme}</h3>
+                      <h3 className="font-bold font-sinhala">{item.theme || "No Theme Name"}</h3>
                       <button onClick={() => handleDelete(item.id)} className="text-rose-500"><Trash2 size={18} /></button>
                     </div>
-                    <p className="text-sm text-slate-500 mt-1">{item.keywords}</p>
+                    <div className="flex gap-2 my-1">
+                      <span className="text-xs font-bold bg-purple-100 text-purple-700 px-2 py-1 rounded">{item.grade}</span>
+                      <span className="text-xs text-slate-500 self-center">Keywords: {item.keywords}</span>
+                    </div>
                     <p className="mt-2 text-sm font-sinhala line-clamp-2">{item.storySentences}</p>
                   </div>
                 </div>
