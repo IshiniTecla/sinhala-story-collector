@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Camera, Save, Trash2, FileText,
   CheckCircle, BookOpen, FileSpreadsheet, Code,
-  Loader2, AlertCircle, List, HelpCircle, Terminal, Edit2
+  Loader2, AlertCircle, List, HelpCircle, Terminal, Edit2, Download
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -38,7 +38,7 @@ export default function GoldenDataCollector() {
   const [editingId, setEditingId] = useState(null);
 
   const [formData, setFormData] = useState({
-    grade: 'Grade 1-2 (Beginner)', // Updated Default
+    grade: 'Grade 1-2 (Beginner)',
     theme: '',
     keywords: '',
     storySentences: '',
@@ -115,9 +115,9 @@ export default function GoldenDataCollector() {
       questions: item.questions
     });
     setImageBase64(item.imageUrl);
-    setEditingId(item.id); // Set ID so we know we are updating
-    setActiveTab('collect'); // Switch tab
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll up
+    setEditingId(item.id);
+    setActiveTab('collect');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     showNotification("Loaded for editing. Make changes and click Update.", "success");
   };
 
@@ -149,7 +149,6 @@ export default function GoldenDataCollector() {
         await updateDoc(docRef, {
           ...formData,
           imageUrl: imageBase64,
-          // We don't update createdAt or authorId usually
         });
         showNotification("Entry Updated Successfully!");
       } else {
@@ -163,8 +162,7 @@ export default function GoldenDataCollector() {
         showNotification("Saved! Great job.");
       }
 
-      // Reset logic
-      handleCancelEdit(); // Clears form and editingId
+      handleCancelEdit();
 
     } catch (error) {
       console.error(error);
@@ -181,10 +179,15 @@ export default function GoldenDataCollector() {
   };
 
   // ==========================================================
-  // EXPORT FOR LLAMA TRAINING
+  // EXPORT FUNCTION (Now accepts specific data)
   // ==========================================================
-  const handleExportTrainingData = () => {
-    const jsonlData = entries.map(e => {
+  const exportData = (dataToExport, filename) => {
+    if (dataToExport.length === 0) {
+      showNotification("No data to export in this category.", "error");
+      return;
+    }
+
+    const jsonlData = dataToExport.map(e => {
       const storyText = e.storySentences.replace(/\n/g, ' ').trim();
       let questionsText = "ප්‍රශ්න:\n";
       e.questions.forEach((q, idx) => {
@@ -208,7 +211,7 @@ export default function GoldenDataCollector() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "train.jsonl";
+    link.download = filename;
     link.click();
   };
 
@@ -274,7 +277,7 @@ export default function GoldenDataCollector() {
                   <input type="text" placeholder="Ex: කෑම උයන වලහා" className="w-full mt-1 p-2.5 border rounded-lg font-sinhala" value={formData.theme} onChange={(e) => setFormData({ ...formData, theme: e.target.value })} />
                 </div>
 
-                {/* 2. Grade Selector (UPDATED) */}
+                {/* 2. Grade Selector */}
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Difficulty Level</label>
                   <select
@@ -353,10 +356,10 @@ export default function GoldenDataCollector() {
             <div className="flex justify-between items-center bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
               <div>
                 <h2 className="font-bold text-lg text-slate-800">Dataset Overview</h2>
-                <p className="text-slate-500 text-sm">Download for Python or Edit existing entries.</p>
+                <p className="text-slate-500 text-sm">Download categories separately or all at once.</p>
               </div>
-              <button onClick={handleExportTrainingData} className="flex items-center gap-2 px-6 py-2 bg-black text-white rounded-lg hover:bg-slate-800 font-bold transition-colors shadow-md">
-                <Terminal size={18} className="text-green-400" /> Download train.jsonl
+              <button onClick={() => exportData(entries, 'train_full.jsonl')} className="flex items-center gap-2 px-6 py-2 bg-black text-white rounded-lg hover:bg-slate-800 font-bold transition-colors shadow-md">
+                <Terminal size={18} className="text-green-400" /> Download ALL ({entries.length})
               </button>
             </div>
 
@@ -364,7 +367,12 @@ export default function GoldenDataCollector() {
 
             {/* 1. BEGINNER */}
             <div>
-              <h3 className="text-purple-700 font-bold text-xl mb-4 flex items-center gap-2">🌱 Beginner (Grade 1-2)</h3>
+              <div className="flex justify-between items-end mb-4 border-b pb-2">
+                <h3 className="text-purple-700 font-bold text-xl flex items-center gap-2">🌱 Beginner (Grade 1-2)</h3>
+                <button onClick={() => exportData(beginnerEntries, 'train_beginner.jsonl')} className="text-xs bg-purple-100 text-purple-700 px-3 py-1.5 rounded font-bold hover:bg-purple-200 flex gap-1">
+                  <Download size={14} /> Download Only These ({beginnerEntries.length})
+                </button>
+              </div>
               <div className="grid grid-cols-1 gap-4">
                 {beginnerEntries.length === 0 && <p className="text-slate-400 italic pl-4">No entries yet.</p>}
                 {beginnerEntries.map(item => <EntryCard key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />)}
@@ -373,7 +381,12 @@ export default function GoldenDataCollector() {
 
             {/* 2. INTERMEDIATE */}
             <div>
-              <h3 className="text-blue-600 font-bold text-xl mb-4 mt-8 flex items-center gap-2">📘 Intermediate (Grade 3-4)</h3>
+              <div className="flex justify-between items-end mb-4 mt-8 border-b pb-2">
+                <h3 className="text-blue-600 font-bold text-xl flex items-center gap-2">📘 Intermediate (Grade 3-4)</h3>
+                <button onClick={() => exportData(intermediateEntries, 'train_intermediate.jsonl')} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded font-bold hover:bg-blue-200 flex gap-1">
+                  <Download size={14} /> Download Only These ({intermediateEntries.length})
+                </button>
+              </div>
               <div className="grid grid-cols-1 gap-4">
                 {intermediateEntries.length === 0 && <p className="text-slate-400 italic pl-4">No entries yet.</p>}
                 {intermediateEntries.map(item => <EntryCard key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />)}
@@ -382,7 +395,12 @@ export default function GoldenDataCollector() {
 
             {/* 3. ADVANCED */}
             <div>
-              <h3 className="text-rose-600 font-bold text-xl mb-4 mt-8 flex items-center gap-2">🎓 Advanced (Grade 5)</h3>
+              <div className="flex justify-between items-end mb-4 mt-8 border-b pb-2">
+                <h3 className="text-rose-600 font-bold text-xl flex items-center gap-2">🎓 Advanced (Grade 5)</h3>
+                <button onClick={() => exportData(advancedEntries, 'train_advanced.jsonl')} className="text-xs bg-rose-100 text-rose-700 px-3 py-1.5 rounded font-bold hover:bg-rose-200 flex gap-1">
+                  <Download size={14} /> Download Only These ({advancedEntries.length})
+                </button>
+              </div>
               <div className="grid grid-cols-1 gap-4">
                 {advancedEntries.length === 0 && <p className="text-slate-400 italic pl-4">No entries yet.</p>}
                 {advancedEntries.map(item => <EntryCard key={item.id} item={item} onEdit={handleEdit} onDelete={handleDelete} />)}
